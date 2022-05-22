@@ -1,0 +1,68 @@
+job_name: "ctm-labeled"
+
+## These will be populated by the code
+# Note the pipe | before `slurm_header` is necessary to parse as separate lines
+templates:
+    command: "/workspace/.conda/envs/cluster_ranking/bin/python /workspace/rupak/ctm/contextualized-topic-models/main.py --config {config_path} --output_dir {output_dir}/"
+    slurm_header: |
+        #!/bin/bash
+        #SBATCH --array=0-{n_jobs}%30
+        #SBATCH --job-name={job_name}
+        #SBATCH --output={log_dir}/{job_name}-%A-%a.log
+        #SBATCH --partition=gpu
+        #SBATCH --constraint=gpu-small
+        #SBATCH --gpus-per-node=1
+        #SBATCH --cpus-per-task=4
+    # scheme for naming folders
+    run_name: "{input_dir}/k-{num_topics}/dvae/alpha_{alpha_prior}-lr_{learning_rate}-h2dim_{encoder_hidden_dim}-reg_{topic_word_regularization}-epochs_{num_epochs}-anneal_bn_{epochs_to_anneal_bn}-anneal_kl_{epochs_to_anneal_kl}/{run_seeds}"
+
+## Hyperparams. 
+## note: use a dictionary {value: name} to assign names to values when formatting the `run_name`
+hyper:
+    input_dir: {
+        "/workspace/topic-preprocessing/data/bills/processed/labeled/vocab_5k": "bills-labeled/vocab_5k",
+        "/workspace/topic-preprocessing/data/bills/processed/labeled/vocab_15k": "bills-labeled/vocab_15k",
+        "/workspace/topic-preprocessing/data/wikitext/processed/labeled/vocab_5k": "wikitext-labeled/vocab_5k",
+        "/workspace/topic-preprocessing/data/wikitext/processed/labeled/vocab_15k": "wikitext-labeled/vocab_15k",
+    }
+    num_topics: [25, 50, 100, 200]
+    #alpha_prior: [0.1, 0.01, 0.001]
+    learning_rate: [0.02, 0.002]
+    #topic_word_regularization: [0.0, 0.01, 0.1, 1.0] # reguarization totally breaks when using softmax
+    num_epochs: [100, 200]
+    #epochs_to_anneal_bn: [0, 1, 100, 200]
+    #epochs_to_anneal_kl: [100, 200]
+    run_seeds: [42, 11235, 5591]
+
+# Optional: filter out param values based on the values of other params
+# constraints: 
+#     - [epochs_to_anneal_bn, <, num_epochs]
+#     - [epochs_to_anneal_kl, <, num_epochs]
+
+# Optional: specify directories or filenames of code which will be copied to the ouput dir for posterity
+# Git hashes will also be saved, if available, for these directories
+code_locations:
+    - /workspace/rupak/ctm/contextualized-topic-models/
+# defaults 
+params:
+    train_path: train.dtm.npz
+    eval_path: train.dtm.npz
+    vocab_path: vocab.json
+    temp_output_dir: /scratch/
+    embeddings_model: paraphrase-distilroberta-base-v1
+
+    num_topics: 100
+    hidden_sizes: (100,100)
+    dropout: 0.2 
+    batch_size: 64
+
+    reduce_on_plateau: false
+    learning_rate: 0.002
+    momentum: 0.99
+    solver: adam
+    contextual_size: 768 
+    
+    # batch_size: 200
+    num_epochs: 100
+  
+    gpu: true
