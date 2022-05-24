@@ -103,7 +103,6 @@ if __name__ == "__main__":
     parser.add("--model_type", default="prodLDA", help="ProdLDA or LDA")
     parser.add("--inference_type", default=None)
 
-    parser.add("--bow_size", type=int, default=None, help="dimension of input bow")
     parser.add(
         "--contextual_size",
         default=768,
@@ -111,7 +110,7 @@ if __name__ == "__main__":
         help="dimension of input that comes from the BERT embeddings",
     )
     parser.add(
-        "--hidden_sizes", default=(100, 100), type=tuple, help="length = n_layers"
+        "--hidden_size", default=100, type=int, help="Duplicated to (hidden_size, hidden_size)"
     )
     parser.add("--num_topics", default=50, type=int)  # n_components
     parser.add("--dropout", default=0.2, type=float)
@@ -121,6 +120,7 @@ if __name__ == "__main__":
     parser.add("--learning_rate", default=2e-3, type=float)
     parser.add("--momentum", default=0.99, type=float)
 
+    parser.add("--n_samples", default=20, type=int, help="samples to use in theta estimate")
     # unique
     parser.add(
         "--no_learn_priors",
@@ -135,7 +135,6 @@ if __name__ == "__main__":
         default=False,
         help="reduce learning rate by 10x on plateau of 10 epochs",
     )
-    parser.add("--cpu_count", default=1, type=int, help="number of data reader workers")
     parser.add("--solver", default="adam", help="adam or sgd")
 
     parser.add(
@@ -178,11 +177,23 @@ if __name__ == "__main__":
         exit()
 
     # print("prepared dataset")
+    hidden_sizes = (args.hidden_size, args.hidden_size)
     ctm = CombinedTM(
         bow_size=dataset.X_bow.shape[1],
         contextual_size=args.contextual_size,
         n_components=args.num_topics,
+        model_type="prodLDA",
+        hidden_sizes=hidden_sizes,
+        activation="softplus",
+        dropout=args.dropout,
+        learn_priors=args.learn_priors,
+        batch_size=args.batch_size,
+        lr=args.learning_rate,
+        momentum=args.momentum,
+        solver=args.solver,
         num_epochs=args.num_epochs,
+        reduce_on_plateau=args.reduce_on_plateau,
+        loss_weights=None,
     )
 
     ctm.fit(dataset)  # run the model
