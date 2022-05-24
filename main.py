@@ -1,16 +1,32 @@
-from signal import default_int_handler
+import random
 import configargparse
-import shutil
 from pathlib import Path
 
 import json
 import scipy
+import torch
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from contextualized_topic_models.models.ctm import CombinedTM
+from contextualized_topic_models.models.ctm import CombinedTM as CombinedTMBase
 from contextualized_topic_models.datasets.dataset import CTMDataset
 
+
+def _set_seeds(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+
+class CombinedTM(CombinedTMBase):
+    def __init__(self, **kwargs):
+        self.sample_seed = kwargs.pop("sample_seed", None)
+        super().__init__(**kwargs)
+    def get_doc_topic_distribution(self, dataset, n_samples=20, seed=None):
+        seed = seed or self.sample_seed
+        _set_seeds(seed)
+        return super().get_doc_topic_distribution(dataset, n_samples)
 
 def load_vocab(vocab_path):
     """
@@ -138,22 +154,15 @@ if __name__ == "__main__":
     parser.add("--solver", default="adam", help="adam or sgd")
 
     parser.add(
-        "--run_seeds",
-        default=[42],
+        "--seed",
+        default=42,
         type=int,
-        nargs="+",
-        help="Seeds to use for each run",
+        help="Seed to use for run",
     )
-    parser.add("--gpu", action="store_true", default=False, help="whether to use cuda")
-    parser.add(
-        "--jit", action="store_true", default=False, help="whether to use PyTorch jit"
-    )
+
     args = parser.parse_args()
 
-    if args.embeds_path is None: 
-        prefix = Path(args.dtm_path).stem.rstrip(".dtm") #train/test
-        embeds_path = Path(args.input_dir, "embeddings", args.embeddings_model, f"{prefix}.embeds.npy")
-
+    _set_seeds(args.seed)
     
     # organize input paths
     base_input_dir = Path(args.input_dir)
@@ -194,11 +203,10 @@ if __name__ == "__main__":
         num_epochs=args.num_epochs,
         reduce_on_plateau=args.reduce_on_plateau,
         loss_weights=None,
+        sample_seed=args.seed,
     )
 
-    ctm.fit(dataset)  # run the model
-    #from IPython import embed; embed()
-    #print("IPYTHON SHOULD HAVE BEEN HIT BY NOW")
+    ctm.fit(dataset, n_samples=args.n_samples)  # run the model
 
     # make sure the output directories exist
     output_dir = Path(args.output_dir)
