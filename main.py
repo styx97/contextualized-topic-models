@@ -139,6 +139,11 @@ if __name__ == "__main__":
     parser.add("--topic_word_prior_path", default=None)
     parser.add("--embeddings_model", default="paraphrase-distilroberta-base-v1")
 
+    parser.add("--do_eval", action="store_true", default=False)
+    parser.add("--eval_dir", default=None, help="If not specified, will use `input_dir`")
+    parser.add("--eval_dtm_path", default="test.dtm.npz")
+    parser.add("--eval_text_path", default="test.metadata.jsonl")
+    parser.add("--eval_embeds_path", default=None)
 
     parser.add("--model_type", default="prodLDA", help="ProdLDA or LDA")
     parser.add("--inference_type", default=None)
@@ -247,14 +252,31 @@ if __name__ == "__main__":
     topic_word_dist = ctm.get_topic_word_distribution()
     doc_topic_dist = ctm.training_doc_topic_distributions # produced at end of run
     topics_list = ctm.get_topic_lists(k=100)
-
     with open(topics_path, 'w') as f: 
-        for elem in topics_list: 
+        for elem in topics_list:
             s = " ".join(elem)
             f.write(f"{s}\n")
-
-    # TODO: create the topics.txt file
 
     ctm.save(models_dir=output_dir)
     np.save(beta_path, topic_word_dist)
     np.save(train_theta_path, doc_topic_dist)
+
+    if args.do_eval:
+        eval_dir = base_input_dir if not args.eval_dir else Path(args.eval_dir)
+        eval_prefix = Path(args.eval_dtm_path).name.split(".")[0] #train/test
+        
+        if args.eval_embeds_path is None:
+            eval_embeds_path = Path(eval_dir, "embeddings", args.embeddings_model, f"{eval_prefix}.embeds.npy")
+        else:
+            eval_embeds_path = eval_dir / args.eval_embed_path
+
+        eval_dataset = prepare_dataset(
+            model_path=args.embeddings_model,
+            dtm_path=eval_dir / args.eval_dtm_path,
+            vocab_path=vocab_path,
+            text_path=eval_dir / args.eval_text_path,
+            embeds_path=eval_embeds_path,
+            jsonl_text_key=args.jsonl_text_key,
+        )
+        eval_theta = ctm.get_doc_topic_distribution(eval_dataset, n_samples=args.n_samples, seed=args.seed)
+        np.save(output_dir / f"{eval_prefix}.theta.npy", eval_theta)
