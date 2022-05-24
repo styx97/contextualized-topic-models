@@ -23,10 +23,15 @@ class CombinedTM(CombinedTMBase):
     def __init__(self, **kwargs):
         self.sample_seed = kwargs.pop("sample_seed", None)
         super().__init__(**kwargs)
+
+    def _format_file(self): # simplified version
+        return "model"
+
     def get_doc_topic_distribution(self, dataset, n_samples=20, seed=None):
         seed = seed or self.sample_seed
         _set_seeds(seed)
         return super().get_doc_topic_distribution(dataset, n_samples)
+
 
 def load_vocab(vocab_path):
     """
@@ -43,10 +48,19 @@ def load_jsonl_dataset(text_path, jsonl_text_key="text"):
     """
     Load text dataset from jsonl to generate document embeddings
     """
+    # if jsonl_text_key not provided, guess it from the soup-nuts preprocessing params.
+    if jsonl_text_key is None:
+        config_path = Path(text_path).parent / "params.json"
+        if not config_path.exists():
+            raise KeyError("Provide a `jsonl_text_key` for reading text")
+        preproc_config = json.loads(config_path.read_text())
+        jsonl_text_key = preproc_config["jsonl_text_key"]
+        print(f"Assuming jsonl_text_key is {jsonl_text_key}")
+
     dataset = []
     with open(text_path) as f:
         for line in f:
-            doc = json.loads(line.rstrip("\n"))
+            doc = json.loads(line)
             text = " ".join(doc[jsonl_text_key].split()[:600]) # gets truncated at 512 anyway
             dataset.append(text)
 
@@ -76,7 +90,7 @@ def prepare_dataset(
     texts = load_jsonl_dataset(text_path, jsonl_text_key)
     idx2token = load_vocab(vocab_path)
 
-    if embeds_path.exists():
+    if Path(embeds_path).exists():
         print("Loaded embeddings")
         embeddings = np.load(embeds_path)
     else:
@@ -99,17 +113,27 @@ if __name__ == "__main__":
         config_file_parser_class=configargparse.YAMLConfigFileParser,
     )
 
-    parser.add("--run_embeddings_only", action="store_true", default=False)
     parser.add("-c", "--config", is_config_file=True, default=None)
+    parser.add("--run_embeddings_only", action="store_true", default=False)
     parser.add("--input_dir", required=True, default=None)
     parser.add("--output_dir", required=True, default=None)
     parser.add(
-        "--jsonl_text_key", default="text", help="The key that has the document in it"
+        "--jsonl_text_key", default=None, help="The key that has the document in it"
     )
 
-    parser.add("--dtm_path", default="train.dtm.npz")
-    parser.add("--text_path", default="train.metadata.jsonl")
-    parser.add("--embeds_path", default=None)
+    parser.add("--dtm_path", default="train.dtm.npz", help="Name of doc-term matrix in input directory")
+    parser.add("--text_path", default="train.metadata.jsonl", help="Name of jsonl path containing text in input directory")
+    parser.add(
+        "--embeds_path",
+        default=None,
+        help=(
+            "Name of the embeddings that encode the input text. "
+            "if not specified, will pull a prefix (e.g., 'train') from `dtm_path` and assume "
+            "embeddings are located in `input_dir`/embeddings/`embeddings_model`/`prefix`.embeds.npy. "
+            "If it does not already exist, will create and store in this file."
+        )
+    )
+    
     parser.add("--vocab_path", default="vocab.json")
     parser.add("--topic_word_init_path", default=None)
     parser.add("--topic_word_prior_path", default=None)
@@ -169,7 +193,12 @@ if __name__ == "__main__":
     dtm_path = base_input_dir / args.dtm_path
     text_path = base_input_dir / args.text_path
     vocab_path = base_input_dir / args.vocab_path
-    
+
+    if args.embeds_path is None: 
+        prefix = Path(args.dtm_path).name.split(".")[0] #train/test
+        embeds_path = Path(args.input_dir, "embeddings", args.embeddings_model, f"{prefix}.embeds.npy")
+    else:
+        embeds_path = base_input_dir / args.embeds_path
 
     # run the model
     # train
